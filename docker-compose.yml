@@ -1,0 +1,60 @@
+services:
+
+  # ── MySQL ────────────────────────────────────────────────────────
+  db:
+    image: mysql:8.0
+    container_name: finance_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: finance_db
+      MYSQL_CHARACTER_SET_SERVER: utf8mb4
+      MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ── Flask backend ─────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: finance_backend
+    restart: unless-stopped
+    environment:
+      FLASK_ENV: development
+      SECRET_KEY: dev-secret-key-change-in-prod
+      DATABASE_URL: mysql+pymysql://root:root@db/finance_db
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./backend:/app         # hot reload — mount source code
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ── React frontend (Vite dev server) ─────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: finance_frontend
+    restart: unless-stopped
+    environment:
+      VITE_API_TARGET: http://backend:5000   # proxy target inside Docker network
+    ports:
+      - "5175:5173"
+    volumes:
+      - ./frontend/src:/app/src              # hot reload — mount src only
+    depends_on:
+      - backend
+
+volumes:
+  mysql_data:
